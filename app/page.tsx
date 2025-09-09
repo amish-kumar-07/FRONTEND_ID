@@ -1,210 +1,216 @@
 'use client'
-import { useState } from 'react'
 
-interface LogEntry {
+import { useState, useEffect } from 'react'
+
+interface CallbackData {
+  id: string
   timestamp: string
-  request: any
-  response: any
-  status: 'loading' | 'success' | 'error'
-  error?: string
+  data: any
+  section: string
 }
 
 export default function Home() {
-  const [functionUrl, setFunctionUrl] = useState('')
-  const [projectId, setProjectId] = useState('project' + Date.now())
-  const [target, setTarget] = useState('https://excalidraw.com/')
-  const [callbackUrl, setCallbackUrl] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [logs, setLogs] = useState<LogEntry[]>([])
+  const [sections, setSections] = useState([
+    { id: 1, functionUrl: '', projectId: '', target: '', callbackUrl: '' },
+    { id: 2, functionUrl: '', projectId: '', target: '', callbackUrl: '' },
+    { id: 3, functionUrl: '', projectId: '', target: '', callbackUrl: '' },
+    { id: 4, functionUrl: '', projectId: '', target: '', callbackUrl: '' }
+  ])
+  
+  const [loading, setLoading] = useState<{[key: number]: boolean}>({})
+  const [responses, setResponses] = useState<{[key: number]: any}>({})
+  const [callbacks, setCallbacks] = useState<CallbackData[]>([])
 
-  const sendRequest = async () => {
-    setLoading(true)
-    
-    const payload = {
-      url: "https://crawl1-b3emf3dbccepdgb7.eastus-01.azurewebsites.net/crawl",
-      projectId,
-      target,
-      callbackUrl
+  useEffect(() => {
+    const baseUrl = typeof window !== 'undefined' ? window.location.origin : ''
+    setSections(prev => prev.map(s => ({
+      ...s,
+      callbackUrl: s.callbackUrl || `${baseUrl}/api/callback`
+    })))
+  }, [])
+
+  const updateSection = (id: number, field: string, value: string) => {
+    setSections(prev => prev.map(s => 
+      s.id === id ? { ...s, [field]: value } : s
+    ))
+  }
+
+  const trigger = async (id: number) => {
+    const section = sections.find(s => s.id === id)
+    if (!section?.functionUrl || !section?.target || !section?.projectId) {
+      alert('Fill all required fields')
+      return
     }
 
-    const logEntry: LogEntry = {
-      timestamp: new Date().toLocaleString(),
-      request: payload,
-      response: null,
-      status: 'loading'
-    }
-
-    setLogs(prev => [logEntry, ...prev])
+    setLoading(prev => ({ ...prev, [id]: true }))
 
     try {
-      const response = await fetch(functionUrl, {
+      const payload = {
+        url: section.functionUrl,
+        projectId: section.projectId,
+        target: section.target,
+        callbackUrl: section.callbackUrl
+      }
+
+      const res = await fetch(section.functionUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       })
 
-      const data = await response.json()
-      
-      logEntry.response = data
-      logEntry.status = response.ok ? 'success' : 'error'
-      
-      if (!response.ok) {
-        logEntry.error = `${response.status}: ${response.statusText}`
-      }
-
-    } catch (error: any) {
-      logEntry.response = null
-      logEntry.status = 'error'
-      logEntry.error = error.message
+      const data = await res.json()
+      setResponses(prev => ({
+        ...prev,
+        [id]: { status: res.status, data, timestamp: new Date().toISOString() }
+      }))
+    } catch (error) {
+      setResponses(prev => ({
+        ...prev,
+        [id]: { status: 'error', data: { error: String(error) }, timestamp: new Date().toISOString() }
+      }))
+    } finally {
+      setLoading(prev => ({ ...prev, [id]: false }))
     }
-
-    setLogs(prev => [logEntry, ...prev.slice(1)])
-    setLoading(false)
   }
 
+  // Poll callbacks
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch('/api/callback')
+        if (res.ok) {
+          const data = await res.json()
+          setCallbacks(data.callbacks || [])
+        }
+      } catch (error) {
+        console.error('Polling error:', error)
+      }
+    }, 2000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const colors = ['#e3f2fd', '#f3e5f5', '#e8f5e8', '#fff3e0']
+
   return (
-    <div style={{ padding: '20px', maxWidth: '800px', margin: '0 auto', fontFamily: 'system-ui' }}>
-      <h1>Azure Function Tester</h1>
+    <div style={{ padding: '20px', backgroundColor: '#f5f5f5', minHeight: '100vh' }}>
+      <h1 style={{ textAlign: 'center', color: '#333', marginBottom: '30px' }}>
+        Azure Function Tester
+      </h1>
       
-      {/* Form */}
-      <div style={{ marginBottom: '30px', padding: '20px', border: '1px solid #ddd', borderRadius: '8px' }}>
-        <div style={{ marginBottom: '15px' }}>
-          <label>Function URL:</label><br/>
-          <input 
-            type="text" 
-            value={functionUrl}
-            onChange={(e) => setFunctionUrl(e.target.value)}
-            placeholder="https://your-function.azurewebsites.net/api/your-function"
-            style={{ width: '100%', padding: '8px', marginTop: '5px' }}
-          />
-        </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '20px', marginBottom: '30px' }}>
+        {sections.map((section, index) => (
+          <div key={section.id} style={{ 
+            backgroundColor: colors[index], 
+            padding: '20px', 
+            borderRadius: '8px',
+            border: '1px solid #ddd'
+          }}>
+            <h3 style={{ margin: '0 0 15px 0', color: '#333' }}>Section {section.id}</h3>
+            
+            <input
+              placeholder="Function URL"
+              value={section.functionUrl}
+              onChange={(e) => updateSection(section.id, 'functionUrl', e.target.value)}
+              style={{ width: '100%', padding: '8px', marginBottom: '10px', border: '1px solid #ccc', borderRadius: '4px' }}
+            />
+            
+            <input
+              placeholder="Project ID"
+              value={section.projectId}
+              onChange={(e) => updateSection(section.id, 'projectId', e.target.value)}
+              style={{ width: '100%', padding: '8px', marginBottom: '10px', border: '1px solid #ccc', borderRadius: '4px' }}
+            />
+            
+            <input
+              placeholder="Target URL"
+              value={section.target}
+              onChange={(e) => updateSection(section.id, 'target', e.target.value)}
+              style={{ width: '100%', padding: '8px', marginBottom: '10px', border: '1px solid #ccc', borderRadius: '4px' }}
+            />
+            
+            <input
+              placeholder="Callback URL"
+              value={section.callbackUrl}
+              onChange={(e) => updateSection(section.id, 'callbackUrl', e.target.value)}
+              style={{ width: '100%', padding: '8px', marginBottom: '15px', border: '1px solid #ccc', borderRadius: '4px' }}
+            />
+            
+            <button
+              onClick={() => trigger(section.id)}
+              disabled={loading[section.id]}
+              style={{
+                width: '100%',
+                padding: '12px',
+                backgroundColor: loading[section.id] ? '#ccc' : '#007acc',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: loading[section.id] ? 'not-allowed' : 'pointer',
+                marginBottom: '15px'
+              }}
+            >
+              {loading[section.id] ? 'Loading...' : `Trigger ${section.id}`}
+            </button>
 
-        <div style={{ marginBottom: '15px' }}>
-          <label>Project ID:</label><br/>
-          <input 
-            type="text" 
-            value={projectId}
-            onChange={(e) => setProjectId(e.target.value)}
-            style={{ width: '100%', padding: '8px', marginTop: '5px' }}
-          />
-        </div>
-
-        <div style={{ marginBottom: '15px' }}>
-          <label>Target URL:</label><br/>
-          <input 
-            type="text" 
-            value={target}
-            onChange={(e) => setTarget(e.target.value)}
-            style={{ width: '100%', padding: '8px', marginTop: '5px' }}
-          />
-        </div>
-
-        <div style={{ marginBottom: '15px' }}>
-          <label>Callback URL (optional):</label><br/>
-          <input 
-            type="text" 
-            value={callbackUrl}
-            onChange={(e) => setCallbackUrl(e.target.value)}
-            style={{ width: '100%', padding: '8px', marginTop: '5px' }}
-          />
-        </div>
-
-        <button 
-          onClick={sendRequest} 
-          disabled={loading || !functionUrl}
-          style={{ 
-            padding: '10px 20px', 
-            backgroundColor: '#0070f3', 
-            color: 'white', 
-            border: 'none', 
-            borderRadius: '5px',
-            cursor: loading ? 'not-allowed' : 'pointer',
-            opacity: loading ? 0.6 : 1
-          }}
-        >
-          {loading ? 'Sending...' : 'Send Request'}
-        </button>
-
-        <button 
-          onClick={() => setLogs([])}
-          style={{ 
-            padding: '10px 20px', 
-            backgroundColor: '#666', 
-            color: 'white', 
-            border: 'none', 
-            borderRadius: '5px',
-            marginLeft: '10px',
-            cursor: 'pointer'
-          }}
-        >
-          Clear Logs
-        </button>
+            {responses[section.id] && (
+              <div style={{ 
+                backgroundColor: 'white', 
+                padding: '10px', 
+                borderRadius: '4px',
+                fontSize: '12px'
+              }}>
+                <strong>Status:</strong> {responses[section.id].status}<br/>
+                <strong>Time:</strong> {new Date(responses[section.id].timestamp).toLocaleTimeString()}<br/>
+                <pre style={{ marginTop: '5px', overflow: 'auto' }}>
+                  {JSON.stringify(responses[section.id].data, null, 2)}
+                </pre>
+              </div>
+            )}
+          </div>
+        ))}
       </div>
 
-      {/* Logs */}
-      <div>
-        <h2>Logs ({logs.length})</h2>
-        {logs.length === 0 ? (
-          <p>No requests sent yet.</p>
+      {/* Callbacks */}
+      <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '8px' }}>
+        <h2 style={{ color: '#333', marginBottom: '15px' }}>
+          Callbacks ({callbacks.length})
+        </h2>
+        <button
+          onClick={() => setCallbacks([])}
+          style={{
+            padding: '8px 16px',
+            backgroundColor: '#dc3545',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            marginBottom: '15px'
+          }}
+        >
+          Clear
+        </button>
+        
+        {callbacks.length === 0 ? (
+          <div style={{ padding: '20px', textAlign: 'center', color: '#666', backgroundColor: '#f9f9f9' }}>
+            No callbacks yet
+          </div>
         ) : (
-          logs.map((log, index) => (
-            <div key={index} style={{ 
-              marginBottom: '20px', 
-              padding: '15px', 
-              border: '1px solid #ddd', 
-              borderRadius: '8px',
-              backgroundColor: log.status === 'error' ? '#ffe6e6' : log.status === 'success' ? '#e6ffe6' : '#f0f0f0'
-            }}>
-              <div style={{ marginBottom: '10px' }}>
-                <strong>
-                  {log.status === 'loading' && '⏳'} 
-                  {log.status === 'success' && '✅'} 
-                  {log.status === 'error' && '❌'} 
-                  {log.timestamp} - {log.request.projectId}
-                </strong>
+          <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+            {callbacks.map((cb) => (
+              <div key={cb.id} style={{ 
+                marginBottom: '10px', 
+                padding: '10px', 
+                backgroundColor: '#f8f9fa', 
+                borderRadius: '4px',
+                fontSize: '12px'
+              }}>
+                <strong>{new Date(cb.timestamp).toLocaleTimeString()}</strong>
+                <pre style={{ marginTop: '5px', overflow: 'auto' }}>
+                  {JSON.stringify(cb.data, null, 2)}
+                </pre>
               </div>
-
-              {log.error && (
-                <div style={{ color: 'red', marginBottom: '10px' }}>
-                  <strong>Error:</strong> {log.error}
-                </div>
-              )}
-
-              <details>
-                <summary style={{ cursor: 'pointer', marginBottom: '10px' }}>
-                  View Request/Response
-                </summary>
-                
-                <div style={{ marginBottom: '10px' }}>
-                  <strong>Request:</strong>
-                  <pre style={{ 
-                    backgroundColor: '#f5f5f5', 
-                    padding: '10px', 
-                    borderRadius: '4px', 
-                    overflow: 'auto',
-                    fontSize: '12px'
-                  }}>
-                    {JSON.stringify(log.request, null, 2)}
-                  </pre>
-                </div>
-
-                {log.response && (
-                  <div>
-                    <strong>Response:</strong>
-                    <pre style={{ 
-                      backgroundColor: '#f5f5f5', 
-                      padding: '10px', 
-                      borderRadius: '4px', 
-                      overflow: 'auto',
-                      fontSize: '12px'
-                    }}>
-                      {JSON.stringify(log.response, null, 2)}
-                    </pre>
-                  </div>
-                )}
-              </details>
-            </div>
-          ))
+            ))}
+          </div>
         )}
       </div>
     </div>
