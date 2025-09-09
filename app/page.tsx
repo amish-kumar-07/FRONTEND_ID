@@ -202,10 +202,11 @@ export default function Home() {
                 padding: '10px', 
                 backgroundColor: '#f8f9fa', 
                 borderRadius: '4px',
-                fontSize: '12px'
+                fontSize: '12px',
+                color: '#000'
               }}>
                 <strong>{new Date(cb.timestamp).toLocaleTimeString()}</strong>
-                <pre style={{ marginTop: '5px', overflow: 'auto' }}>
+                <pre style={{ marginTop: '5px', overflow: 'auto', color: '#000' }}>
                   {JSON.stringify(cb.data, null, 2)}
                 </pre>
               </div>
