@@ -1,84 +1,212 @@
-'use client';
+'use client'
+import { useState } from 'react'
 
-import { useState, useEffect } from 'react';
-
-// Define the log entry type
 interface LogEntry {
-  id?: string;
-  timestamp?: string;
-  message?: string;
-  type?: string;
-  [key: string]: any; // Allow additional properties
+  timestamp: string
+  request: any
+  response: any
+  status: 'loading' | 'success' | 'error'
+  error?: string
 }
 
-export default function LogsPage() {
-  const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [status, setStatus] = useState<string>('Connecting...');
+export default function Home() {
+  const [functionUrl, setFunctionUrl] = useState('')
+  const [projectId, setProjectId] = useState('project' + Date.now())
+  const [target, setTarget] = useState('https://excalidraw.com/')
+  const [callbackUrl, setCallbackUrl] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [logs, setLogs] = useState<LogEntry[]>([])
 
-  useEffect(() => {
-    const eventSource = new EventSource('/api/callback');
+  const sendRequest = async () => {
+    setLoading(true)
+    
+    const payload = {
+      url: "https://crawl1-b3emf3dbccepdgb7.eastus-01.azurewebsites.net/crawl",
+      projectId,
+      target,
+      callbackUrl
+    }
 
-    eventSource.onopen = function() {
-      setStatus('Connected');
-    };
+    const logEntry: LogEntry = {
+      timestamp: new Date().toLocaleString(),
+      request: payload,
+      response: null,
+      status: 'loading'
+    }
 
-    eventSource.onerror = function() {
-      setStatus('Error');
-    };
+    setLogs(prev => [logEntry, ...prev])
 
-    eventSource.onmessage = function(event: MessageEvent) {
-      try {
-        const data: LogEntry = JSON.parse(event.data);
-        if (data && data.type !== 'connection') {
-          setLogs(function(prev: LogEntry[]) {
-            return [data, ...prev];
-          });
-        }
-      } catch (error) {
-        console.error('Error parsing message:', error);
+    try {
+      const response = await fetch(functionUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+
+      const data = await response.json()
+      
+      logEntry.response = data
+      logEntry.status = response.ok ? 'success' : 'error'
+      
+      if (!response.ok) {
+        logEntry.error = `${response.status}: ${response.statusText}`
       }
-    };
 
-    return function() {
-      eventSource.close();
-    };
-  }, []);
+    } catch (error: any) {
+      logEntry.response = null
+      logEntry.status = 'error'
+      logEntry.error = error.message
+    }
+
+    setLogs(prev => [logEntry, ...prev.slice(1)])
+    setLoading(false)
+  }
 
   return (
-    <div className="p-4">
-      <div className="flex justify-between items-center mb-4">
-        <h1 className="text-xl font-bold">Real-time Logs</h1>
-        <span className={
-          status === 'Connected' 
-            ? 'px-2 py-1 rounded text-sm bg-green-100 text-green-800'
-            : 'px-2 py-1 rounded text-sm bg-red-100 text-red-800'
-        }>
-          {status}
-        </span>
+    <div style={{ padding: '20px', maxWidth: '800px', margin: '0 auto', fontFamily: 'system-ui' }}>
+      <h1>Azure Function Tester</h1>
+      
+      {/* Form */}
+      <div style={{ marginBottom: '30px', padding: '20px', border: '1px solid #ddd', borderRadius: '8px' }}>
+        <div style={{ marginBottom: '15px' }}>
+          <label>Function URL:</label><br/>
+          <input 
+            type="text" 
+            value={functionUrl}
+            onChange={(e) => setFunctionUrl(e.target.value)}
+            placeholder="https://your-function.azurewebsites.net/api/your-function"
+            style={{ width: '100%', padding: '8px', marginTop: '5px' }}
+          />
+        </div>
+
+        <div style={{ marginBottom: '15px' }}>
+          <label>Project ID:</label><br/>
+          <input 
+            type="text" 
+            value={projectId}
+            onChange={(e) => setProjectId(e.target.value)}
+            style={{ width: '100%', padding: '8px', marginTop: '5px' }}
+          />
+        </div>
+
+        <div style={{ marginBottom: '15px' }}>
+          <label>Target URL:</label><br/>
+          <input 
+            type="text" 
+            value={target}
+            onChange={(e) => setTarget(e.target.value)}
+            style={{ width: '100%', padding: '8px', marginTop: '5px' }}
+          />
+        </div>
+
+        <div style={{ marginBottom: '15px' }}>
+          <label>Callback URL (optional):</label><br/>
+          <input 
+            type="text" 
+            value={callbackUrl}
+            onChange={(e) => setCallbackUrl(e.target.value)}
+            style={{ width: '100%', padding: '8px', marginTop: '5px' }}
+          />
+        </div>
+
+        <button 
+          onClick={sendRequest} 
+          disabled={loading || !functionUrl}
+          style={{ 
+            padding: '10px 20px', 
+            backgroundColor: '#0070f3', 
+            color: 'white', 
+            border: 'none', 
+            borderRadius: '5px',
+            cursor: loading ? 'not-allowed' : 'pointer',
+            opacity: loading ? 0.6 : 1
+          }}
+        >
+          {loading ? 'Sending...' : 'Send Request'}
+        </button>
+
+        <button 
+          onClick={() => setLogs([])}
+          style={{ 
+            padding: '10px 20px', 
+            backgroundColor: '#666', 
+            color: 'white', 
+            border: 'none', 
+            borderRadius: '5px',
+            marginLeft: '10px',
+            cursor: 'pointer'
+          }}
+        >
+          Clear Logs
+        </button>
       </div>
-             
-      <div className="space-y-2 max-h-96 overflow-y-auto">
-        {logs.map(function(log: LogEntry, i: number) {
-          const timestamp = log.timestamp || new Date().toISOString();
-          const message = log.message || JSON.stringify(log);
-                     
-          return (
-            <div key={log.id || i} className="p-3 border rounded bg-gray-50">
-              <div className="text-sm text-gray-500">
-                {new Date(timestamp).toLocaleTimeString()}
+
+      {/* Logs */}
+      <div>
+        <h2>Logs ({logs.length})</h2>
+        {logs.length === 0 ? (
+          <p>No requests sent yet.</p>
+        ) : (
+          logs.map((log, index) => (
+            <div key={index} style={{ 
+              marginBottom: '20px', 
+              padding: '15px', 
+              border: '1px solid #ddd', 
+              borderRadius: '8px',
+              backgroundColor: log.status === 'error' ? '#ffe6e6' : log.status === 'success' ? '#e6ffe6' : '#f0f0f0'
+            }}>
+              <div style={{ marginBottom: '10px' }}>
+                <strong>
+                  {log.status === 'loading' && '⏳'} 
+                  {log.status === 'success' && '✅'} 
+                  {log.status === 'error' && '❌'} 
+                  {log.timestamp} - {log.request.projectId}
+                </strong>
               </div>
-              <div className="mt-1">
-                {message}
-              </div>
+
+              {log.error && (
+                <div style={{ color: 'red', marginBottom: '10px' }}>
+                  <strong>Error:</strong> {log.error}
+                </div>
+              )}
+
+              <details>
+                <summary style={{ cursor: 'pointer', marginBottom: '10px' }}>
+                  View Request/Response
+                </summary>
+                
+                <div style={{ marginBottom: '10px' }}>
+                  <strong>Request:</strong>
+                  <pre style={{ 
+                    backgroundColor: '#f5f5f5', 
+                    padding: '10px', 
+                    borderRadius: '4px', 
+                    overflow: 'auto',
+                    fontSize: '12px'
+                  }}>
+                    {JSON.stringify(log.request, null, 2)}
+                  </pre>
+                </div>
+
+                {log.response && (
+                  <div>
+                    <strong>Response:</strong>
+                    <pre style={{ 
+                      backgroundColor: '#f5f5f5', 
+                      padding: '10px', 
+                      borderRadius: '4px', 
+                      overflow: 'auto',
+                      fontSize: '12px'
+                    }}>
+                      {JSON.stringify(log.response, null, 2)}
+                    </pre>
+                  </div>
+                )}
+              </details>
             </div>
-          );
-        })}
-        {logs.length === 0 && (
-          <div className="text-gray-500 text-center py-8">
-            Waiting for logs...
-          </div>
+          ))
         )}
       </div>
     </div>
-  );
+  )
 }
