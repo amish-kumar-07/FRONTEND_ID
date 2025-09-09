@@ -85,7 +85,7 @@ export async function GET(): Promise<Response> {
       clients.forEach((client: SSEClient) => {
         try {
           client.controller.close();
-        } catch (error) {
+        } catch {
           // Client already disconnected
         }
       });
