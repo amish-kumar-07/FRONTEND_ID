@@ -1,6 +1,17 @@
 // app/api/callback/route.ts
 import { NextResponse, NextRequest } from 'next/server';
 
+// Define the log data type
+interface LogData {
+  message?: string;
+  level?: string;
+  service?: string;
+  timestamp?: string;
+  id?: string;
+  type?: string;
+  [key: string]: unknown; // Allow additional properties
+}
+
 // Define the client connection type
 interface SSEClient {
   id: string;
@@ -11,13 +22,13 @@ interface SSEClient {
 const clients = new Set<SSEClient>();
 
 // Helper function to broadcast to all connected clients
-function broadcast(data: any): void {
+function broadcast(data: LogData): void {
   const message = `data: ${JSON.stringify(data)}\n\n`;
      
   clients.forEach((client: SSEClient) => {
     try {
       client.controller.enqueue(new TextEncoder().encode(message));
-    } catch (error) {
+    } catch {
       // Remove disconnected clients
       clients.delete(client);
     }
@@ -27,10 +38,10 @@ function broadcast(data: any): void {
 // POST endpoint - Receive logs from external services
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
-    const logData = await request.json();
+    const logData: LogData = await request.json();
          
     // Add timestamp if not provided
-    const enrichedLog = {
+    const enrichedLog: LogData = {
       ...logData,
       timestamp: logData.timestamp || new Date().toISOString(),
       id: logData.id || Date.now().toString()
@@ -45,8 +56,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       clientCount: clients.size
     });
        
-  } catch (error) {
-    console.error('Error processing log:', error);
+  } catch {
+    console.error('Error processing log data');
     return NextResponse.json(
       { success: false, message: 'Invalid JSON data' },
       { status: 400 }
