@@ -4,26 +4,30 @@ import { usersTable } from "../../db/schema";
 
 export async function POST(req: NextRequest) {
   try {
-    // Try parsing JSON first
-    let bodyText: string;
+    let reportText: string;
+
     try {
-      const body = await req.json<{ output?: string }>();
-      bodyText = body.output ?? JSON.stringify(body);
+      // Try parsing JSON first
+      const body = (await req.json()) as { output?: string };
+      reportText = body.output ?? JSON.stringify(body);
     } catch {
       // If it wasn’t JSON, fallback to raw text
-      bodyText = await req.text();
+      reportText = await req.text();
     }
 
-    if (!bodyText) {
+    if (!reportText) {
       return NextResponse.json(
         { error: "No crawl report received" },
         { status: 400 }
       );
     }
 
+    // Insert into DB
     const inserted = await db
       .insert(usersTable)
-      .values({ output: bodyText })
+      .values({
+        output: reportText, // store report in "output" column
+      })
       .returning();
 
     return NextResponse.json(
